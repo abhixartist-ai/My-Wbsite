@@ -1,0 +1,147 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chassis Verification</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Roboto', sans-serif; background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); margin: 0; padding: 0; }
+    .container { max-width: 1000px; margin: 40px auto; padding: 30px; background: #fff; border-radius: 15px; box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+    h2 { text-align: center; color: #333; margin-bottom: 25px; font-size: 28px; }
+    #statusBox { width: 250px; height: 40px; margin: 0 auto 25px; font-weight: 700; text-align: center; color: white; line-height: 40px; border-radius: 8px; font-size: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: 0.3s; }
+    input[type='file'], input[type='text'] { padding: 10px 14px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; margin: 5px 0; }
+    input[type='text'] { width: 280px; }
+    button { padding: 10px 18px; font-size: 16px; margin-left: 8px; border: none; border-radius: 8px; background: linear-gradient(45deg,#4CAF50,#2E7D32); color: white; cursor: pointer; transition: 0.3s; box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
+    button:hover { background: linear-gradient(45deg,#66BB6A,#388E3C); }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; display: none; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    th, td { border: 1px solid #ddd; padding: 12px; text-align: left; font-size: 14px; }
+    th { background-color: #f7f7f7; color: #333; position: sticky; top: 0; }
+    tr.single-found { background-color: #c6f6c6 !important; } /* green */
+    tr.duplicate-found { background-color: #fff3b3 !important; } /* yellow */
+    #fileName { margin-left: 10px; font-weight: 500; color: #555; font-size: 15px; }
+    @media (max-width: 768px) {
+      .container { margin: 20px; padding: 20px; }
+      input[type='text'] { width: 100%; margin-bottom: 10px; }
+      button { margin: 5px 0; width: 48%; }
+      table, th, td { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>Stock Physical Verification</h2>
+  <div id="statusBox">Status</div>
+  <div style="text-align:center; margin-bottom:15px;">
+    <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    <span id="fileName"></span>
+  </div>
+  <div style="text-align:center; margin-bottom:15px;">
+    <input type="text" id="searchBox" placeholder="Enter Chassis Number" />
+    <button onclick="searchChassis()">Verify</button>
+    <button onclick="downloadExcelWithSummary()">Save & Summary</button>
+  </div>
+  <table id="dataTable"></table>
+</div><script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script><script>
+let excelData = [];
+const fileInput = document.getElementById('fileInput');
+const table = document.getElementById('dataTable');
+
+fileInput.onchange = function(e) {
+  const fileLabel = document.getElementById('fileName');
+  if (e.target.files.length > 0) {
+    fileLabel.innerText = 'Loaded: ' + e.target.files[0].name;
+  } else {
+    fileLabel.innerText = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      alert('No sheet found in this file!');
+      return;
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    excelData = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
+    renderTable();
+  };
+  reader.readAsArrayBuffer(e.target.files[0]);
+};
+
+function renderTable() {
+  table.innerHTML = '';
+  table.style.display = 'table';
+  excelData.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    row.forEach(cell => {
+      const td = document.createElement(i === 0 ? 'th' : 'td');
+      td.innerText = cell;
+      tr.appendChild(td);
+    });
+    table.appendChild(tr);
+  });
+}
+
+function searchChassis() {
+  const val = document.getElementById('searchBox').value.trim();
+  if(val === '') return;
+
+  const statusBox = document.getElementById('statusBox');
+  const rows = table.rows;
+
+  for(let i=1;i<rows.length;i++){
+    if(!rows[i].classList.contains('single-found')) rows[i].classList.remove('duplicate-found');
+  }
+
+  let matchedRows = [];
+  for(let i=1;i<rows.length;i++){
+    const cell = rows[i].cells[1];
+    if(cell && cell.innerText.includes(val)) matchedRows.push(rows[i]);
+  }
+
+  if(matchedRows.length === 0){
+    statusBox.innerText='Not Found';
+    statusBox.style.backgroundColor='red';
+    return;
+  }
+
+  if(matchedRows.length ===1){
+    statusBox.innerText='Verified';
+    statusBox.style.backgroundColor='green';
+    matchedRows[0].classList.add('single-found');
+    matchedRows[0].classList.remove('duplicate-found');
+  } else {
+    statusBox.innerText='Duplicate';
+    statusBox.style.backgroundColor='orange';
+    matchedRows.forEach(tr=>{
+      if(!tr.classList.contains('single-found')) tr.classList.add('duplicate-found');
+    });
+  }
+}
+
+function downloadExcelWithSummary(){
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.table_to_sheet(table);
+  const range = XLSX.utils.decode_range(ws['!ref']);
+
+  let verified=0, duplicate=0;
+  for(let r=1;r<=range.e.r;r++){
+    const tr=table.rows[r];
+    let fill=null;
+    if(tr.classList.contains('single-found')){fill={fgColor:{rgb:'C6F6C6'}}; verified++;}
+    else if(tr.classList.contains('duplicate-found')){fill={fgColor:{rgb:'FFF3B3'}}; duplicate++;}
+    if(fill){for(let c=range.s.c;c<=range.e.c;c++){const cellRef=XLSX.utils.encode_cell({r,c}); if(ws[cellRef]) ws[cellRef].s={fill};}}
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Verification');
+  const summaryData=[['Summary'],['Verified (Green)', verified],['Duplicate (Yellow)', duplicate],['Total Rows', table.rows.length-1]];
+  const wsSummary=XLSX.utils.aoa_to_sheet(summaryData);
+  XLSX.utils.book_append_sheet(wb, wsSummary,'Summary');
+  XLSX.writeFile(wb,'verified_stock_with_summary.xlsx');
+}
+</script></body>
+</html>
